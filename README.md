@@ -62,11 +62,28 @@
 | [`eval_val.txt`](eval_val.txt) | 지정주제 고정 검증셋 이미지 인덱스 (1,000장) |
 | [`docs/study_guide.md`](docs/study_guide.md) | 프로젝트 전 알아둘 개념 정리 (사전 학습 가이드) |
 
+## 실행 방법
+
+| 단계 | 노트북 | 내용 |
+| --- | --- | --- |
+| 01 | [`notebooks/01_prepare_data.ipynb`](notebooks/01_prepare_data.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/01_prepare_data.ipynb)) | KITTI 다운로드, YOLO 형식 변환, train / dev / eval 분리 |
+
+### 데이터 분리 원칙
+
+| 셋 | 장수 | 용도 |
+| --- | --- | --- |
+| train | 5,833 | 학습 |
+| dev | 648 | 학습 중 점검 (eval_val 제외한 사진의 10%) |
+| eval | 1,000 | `eval_val.txt` 고정 검증셋. **최종 채점에만 사용, 학습·튜닝에 쓰지 않음** |
+
+클래스는 Van→Car, Person_sitting→Pedestrian 으로 합쳐 Car / Pedestrian / Cyclist 3개를 사용합니다.
+
 ## 진행 상황
 
 - [x] 대회 안내 자료 정리
 - [ ] [사전 학습](docs/study_guide.md)
-- [ ] 주제 확정 (지정 / 자유)
+- [x] 주제 확정: 지정주제
+- [x] KITTI 데이터 준비 (YOLO 변환)
 - [ ] 베이스라인 모델 선정 및 KITTI 평가 환경 구축
 - [ ] 양자화·경량화 실험
 - [ ] 예선 보고서 작성 및 제출

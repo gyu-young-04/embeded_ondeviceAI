@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+# 데이터셋·학습 결과는 용량이 커서 올리지 않음
+kitti/
+kitti_yolo/
+runs/
+*.zip
