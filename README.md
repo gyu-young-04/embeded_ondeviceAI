@@ -67,7 +67,7 @@
 | 단계 | 노트북 | 내용 |
 | --- | --- | --- |
 | 01 | [`notebooks/01_prepare_data.ipynb`](notebooks/01_prepare_data.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/01_prepare_data.ipynb)) | KITTI 다운로드, YOLO 형식 변환, train / dev / eval 분리 |
-| 02 | [`notebooks/02_train.ipynb`](notebooks/02_train.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/02_train.ipynb)) | YOLOv8n 베이스라인 학습 (입력 960), 결과는 Google Drive에 저장 |
+| 02 | [`notebooks/02_train.ipynb`](notebooks/02_train.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/02_train.ipynb)) | 모델(v8n / v8s / 11n) · 입력 크기(640 / 960 / 1280) 비교 학습 후 최고 조합 선정, 결과는 Google Drive에 저장 |
 
 ### 데이터 분리 원칙
 
