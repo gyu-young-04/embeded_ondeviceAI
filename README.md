@@ -68,6 +68,17 @@
 | --- | --- | --- |
 | 01 | [`notebooks/01_prepare_data.ipynb`](notebooks/01_prepare_data.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/01_prepare_data.ipynb)) | KITTI 다운로드, YOLO 형식 변환, train / dev / eval 분리 |
 | 02 | [`notebooks/02_train.ipynb`](notebooks/02_train.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/02_train.ipynb)) | 모델(v8n / v8s / 11n) · 입력 크기(640 / 960 / 1280) 비교 학습 후 최고 조합 선정, 결과는 Google Drive에 저장 |
+| 03 | [`notebooks/03_optimize_eval.ipynb`](notebooks/03_optimize_eval.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/03_optimize_eval.ipynb)) | ONNX 변환, INT8 양자화(PTQ), KITTI Moderate AP40 채점, 속도·메모리 측정, 최종 비교표 |
+
+### 스크립트
+
+| 파일 | 내용 |
+| --- | --- |
+| `scripts/prepare_kitti.py` | KITTI 라벨 → YOLO 형식 변환, train / dev / eval 분리 |
+| `scripts/onnx_infer.py` | ONNX 모델 추론 (letterbox 전처리, NMS 후처리) → KITTI 형식 예측 파일 |
+| `scripts/kitti_eval.py` | KITTI 공식 2D 채점 (AP40, Easy / Moderate / Hard) |
+| `scripts/quantize_onnx.py` | ONNX Runtime 정적 양자화 (INT8 PTQ, 헤드 FP32 옵션) |
+| `scripts/benchmark_onnx.py` | CPU latency · 메모리 측정 |
 
 ### 데이터 분리 원칙
 
@@ -85,6 +96,7 @@
 - [ ] [사전 학습](docs/study_guide.md)
 - [x] 주제 확정: 지정주제
 - [x] KITTI 데이터 준비 (YOLO 변환)
-- [ ] 베이스라인 모델 선정 및 KITTI 평가 환경 구축
+- [ ] 베이스라인 모델 선정 (02 비교 실험)
+- [x] KITTI AP40 채점 · 양자화 · 측정 코드 (03)
 - [ ] 양자화·경량화 실험
 - [ ] 예선 보고서 작성 및 제출

@@ -1,0 +1,10 @@
+# 실험에 쓴 정확한 버전은 각 노트북의 설치 칸 출력에 기록됨
+ultralytics
+torch
+onnx
+onnxruntime
+onnxslim
+opencv-python
+numpy
+pillow
+pandas
