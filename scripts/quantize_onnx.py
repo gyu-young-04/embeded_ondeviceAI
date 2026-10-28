@@ -16,6 +16,7 @@ from pathlib import Path
 import onnx
 from onnxruntime.quantization import (CalibrationDataReader, CalibrationMethod, QuantFormat, QuantType,
                                       quantize_static)
+from onnxruntime.quantization.calibrate import HistogramCalibrater
 from onnxruntime.quantization.shape_inference import quant_pre_process
 
 from onnx_infer import preprocess
@@ -34,6 +35,32 @@ class ImageReader(CalibrationDataReader):
         return {self.input_name: preprocess(path, self.height, self.width)[0]}
 
 
+class ListReader(CalibrationDataReader):
+    def __init__(self, items):
+        self.items = iter(items)
+
+    def get_next(self):
+        return next(self.items, None)
+
+
+def chunk_histogram_calibration(chunk):
+    """Percentile / Entropy 는 사진 전체의 중간 계산값을 한꺼번에 메모리에 쌓아서 Colab RAM 이 터진다.
+    사진을 chunk 장씩 나눠 넘기면 히스토그램이 누적되므로 결과는 같고 메모리만 줄어든다."""
+    original = HistogramCalibrater.collect_data
+
+    def collect_data(self, data_reader):
+        nxt = data_reader.get_next()
+        while nxt is not None:
+            batch = [nxt]
+            nxt = data_reader.get_next()
+            while nxt is not None and len(batch) < chunk:
+                batch.append(nxt)
+                nxt = data_reader.get_next()
+            original(self, ListReader(batch))
+
+    HistogramCalibrater.collect_data = collect_data
+
+
 def head_nodes_to_exclude(model):
     """Detect 레이어(마지막 레이어)에서 Conv 가지(cv2, cv3 …)를 뺀 나머지 = 박스 계산(후처리) 노드"""
     names = [n.name for n in model.graph.node]
@@ -50,7 +77,7 @@ def main():
     parser.add_argument("--calib-count", type=int, default=300)
     parser.add_argument("--method", default="MinMax", choices=["MinMax", "Entropy", "Percentile"])
     parser.add_argument("--keep-head-fp32", action="store_true")
-    parser.add_argument("--calib-chunk", type=int, default=20,
+    parser.add_argument("--calib-chunk", type=int, default=10,
                         help="calibration 중간 결과를 몇 장마다 정리할지 (메모리 절약)")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
@@ -67,6 +94,7 @@ def main():
     random.Random(args.seed).shuffle(paths)
     reader = ImageReader(paths[:args.calib_count], inp.name, height, width)
 
+    chunk_histogram_calibration(args.calib_chunk)
     exclude = head_nodes_to_exclude(model) if args.keep_head_fp32 else []
     quantize_static(
         str(prep), args.out, reader,
