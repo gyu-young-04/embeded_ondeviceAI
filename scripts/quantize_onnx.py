@@ -78,7 +78,7 @@ def main():
     parser.add_argument("--method", default="MinMax", choices=["MinMax", "Entropy", "Percentile"])
     parser.add_argument("--keep-head-fp32", action="store_true")
     parser.add_argument("--calib-chunk", type=int, default=10,
-                        help="calibration 중간 결과를 몇 장마다 정리할지 (메모리 절약)")
+                        help="Percentile / Entropy 에서 몇 장씩 나눠 계산할지 (메모리 절약)")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
@@ -104,7 +104,6 @@ def main():
         per_channel=True,
         calibrate_method=getattr(CalibrationMethod, args.method),
         nodes_to_exclude=exclude,
-        extra_options={"CalibMaxIntermediateOutputs": args.calib_chunk},
     )
     prep.unlink(missing_ok=True)
     print(f"INT8 저장: {args.out} (calibration {min(args.calib_count, len(paths))}장, {args.method}, "
