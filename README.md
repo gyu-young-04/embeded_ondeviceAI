@@ -67,7 +67,7 @@
 | 단계 | 노트북 | 내용 |
 | --- | --- | --- |
 | 01 | [`notebooks/01_prepare_data.ipynb`](notebooks/01_prepare_data.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/01_prepare_data.ipynb)) | KITTI 다운로드, YOLO 형식 변환, train / dev / eval 분리 |
-| 02 | [`notebooks/02_train.ipynb`](notebooks/02_train.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/02_train.ipynb)) | 모델(v8n / v8s / 11n) · 입력 크기(640 / 960 / 1280) 비교 학습 후 최고 조합 선정, 결과는 Google Drive에 저장 |
+| 02 | [`notebooks/02_train.ipynb`](notebooks/02_train.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/02_train.ipynb)) | 모델(v8n / v8s / 11n / 26n) · 입력 크기(640 / 960 / 1280) 비교 학습 후 최고 조합 선정, 결과는 Google Drive에 저장 |
 | 03 | [`notebooks/03_optimize_eval.ipynb`](notebooks/03_optimize_eval.ipynb) ([Colab에서 열기](https://colab.research.google.com/github/gyu-young-04/embeded_ondeviceAI/blob/main/notebooks/03_optimize_eval.ipynb)) | ONNX 변환, INT8 양자화(PTQ), KITTI Moderate AP40 채점, 속도·메모리 측정, 최종 비교표 |
 
 ### 스크립트
