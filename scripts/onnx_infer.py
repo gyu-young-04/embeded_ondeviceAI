@@ -57,7 +57,10 @@ def nms(boxes, scores, iou_thr):
     return np.array(keep, dtype=int)
 
 
-def postprocess(output, orig_shape, letterbox_info, conf_thr=0.001, iou_thr=0.7, max_det=100):
+NMS_IOU = 0.5  # dev 로 0.3~0.8 을 비교해 고른 값 (03 노트북 12번 칸)
+
+
+def postprocess(output, orig_shape, letterbox_info, conf_thr=0.001, iou_thr=NMS_IOU, max_det=100):
     """output: (1, 4 + 클래스 수, N), 박스는 입력 이미지 기준 (cx, cy, w, h)"""
     pred = output[0].T
     boxes_cxcywh, cls_scores = pred[:, :4], pred[:, 4:]
@@ -109,7 +112,7 @@ def make_session(model_path, threads=None):
     return ort.InferenceSession(str(model_path), opts, providers=providers)
 
 
-def predict_folder(model_path, image_dir, ids, out_dir, iou_thr=0.7):
+def predict_folder(model_path, image_dir, ids, out_dir, iou_thr=NMS_IOU):
     predict_folder_nms(model_path, image_dir, ids, {iou_thr: out_dir})
 
 
@@ -135,9 +138,10 @@ def main():
     parser.add_argument("--images", required=True)
     parser.add_argument("--ids", default=str(Path(__file__).resolve().parent.parent / "eval_val.txt"))
     parser.add_argument("--out", required=True)
+    parser.add_argument("--iou", type=float, default=NMS_IOU, help="NMS IoU (기본 0.5)")
     args = parser.parse_args()
     ids = [l.strip() for l in Path(args.ids).read_text().splitlines() if l.strip()]
-    predict_folder(args.model, args.images, ids, args.out)
+    predict_folder(args.model, args.images, ids, args.out, iou_thr=args.iou)
 
 
 if __name__ == "__main__":

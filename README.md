@@ -2,7 +2,7 @@
 
 2026학년도 모바일공학전공 하반기 공모전 **[트랙 2] 임베디드 환경 On-device AI 최적화 챌린지** 참가 저장소입니다.
 
-> 주제 확정 전입니다. 현재는 **지정주제(자율주행 객체인지)** 로 진행하는 방향을 검토 중입니다.
+> **지정주제(자율주행 객체인지)** 로 참가합니다.
 
 ## 대회 개요
 
@@ -90,13 +90,36 @@
 
 클래스는 Van→Car, Person_sitting→Pedestrian 으로 합쳐 Car / Pedestrian / Cyclist 3개를 사용합니다.
 
+## 최종 결과 (예선)
+
+YOLOv8n(960x288)을 INT8로 양자화해 KITTI Moderate AP40 90.55점(유지율 97.1%)을 지키면서 모델 크기를 1/4로 줄였습니다.
+
+| 항목 | Baseline (FP32) | 최종 (INT8) |
+| --- | --- | --- |
+| Moderate AP40 (eval_val 1,000장) | 93.29 | **90.55** (유지율 97.1%) |
+| Car / Pedestrian / Cyclist | 98.70 / 88.41 / 92.76 | 97.61 / 85.34 / 88.69 |
+| 파라미터 / GFLOPs | 3.14M / 5.91 | 3.14M / 5.91 |
+| 파일 크기 | 12.7MB | 3.6MB |
+| 메모리 | 76.6MB | 45.7MB |
+| CPU latency 중앙값 (Colab 2코어) | 117.7ms | 90.9ms |
+
+| 설정 | 값 | 고른 방법 |
+| --- | --- | --- |
+| 모델 | YOLOv8n, 60 epochs | v8n / v8s / 11n / 26n 비교 (dev) |
+| 양자화 | ONNX Runtime 정적 PTQ, QDQ, INT8 per-channel | |
+| 혼합 정밀도 | Detect 헤드의 박스 디코드 부분만 FP32 | 전체 INT8은 0점 |
+| 눈금(calibration) | Percentile, train 300장, 시드 0 | MinMax / Percentile / Entropy, 시드 0·1·2·49 비교 (dev) |
+| 후처리 | conf 0.001, NMS IoU 0.5, 최대 100개 | NMS 0.3~0.8 비교 (dev) |
+
+모든 설정은 dev(648장)로 골랐고, eval_val 1,000장은 최종 채점에만 사용했습니다.
+
 ## 진행 상황
 
 - [x] 대회 안내 자료 정리
 - [ ] [사전 학습](docs/study_guide.md)
 - [x] 주제 확정: 지정주제
 - [x] KITTI 데이터 준비 (YOLO 변환)
-- [ ] 베이스라인 모델 선정 (02 비교 실험)
+- [x] 베이스라인 모델 선정 (02 비교 실험)
 - [x] KITTI AP40 채점 · 양자화 · 측정 코드 (03)
-- [ ] 양자화·경량화 실험
+- [x] 양자화·경량화 실험
 - [ ] 예선 보고서 작성 및 제출
