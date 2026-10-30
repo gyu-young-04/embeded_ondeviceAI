@@ -109,16 +109,24 @@ def make_session(model_path, threads=None):
     return ort.InferenceSession(str(model_path), opts, providers=providers)
 
 
-def predict_folder(model_path, image_dir, ids, out_dir):
+def predict_folder(model_path, image_dir, ids, out_dir, iou_thr=0.7):
+    predict_folder_nms(model_path, image_dir, ids, {iou_thr: out_dir})
+
+
+def predict_folder_nms(model_path, image_dir, ids, out_dirs):
+    """모델은 한 번만 돌리고, NMS IoU 값마다 다른 폴더에 예측을 쓴다. out_dirs = {iou: 폴더}"""
     sess = make_session(model_path)
     inp = sess.get_inputs()[0]
     height, width = inp.shape[2], inp.shape[3]
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dirs = {iou: Path(d) for iou, d in out_dirs.items()}
+    for d in out_dirs.values():
+        d.mkdir(parents=True, exist_ok=True)
     for image_id in ids:
         x, orig_shape, info = preprocess(Path(image_dir) / f"{image_id}.png", height, width)
         output = sess.run(None, {inp.name: x})[0]
-        (out_dir / f"{image_id}.txt").write_text(to_kitti_lines(postprocess(output, orig_shape, info)))
+        for iou, d in out_dirs.items():
+            dets = postprocess(output, orig_shape, info, iou_thr=iou)
+            (d / f"{image_id}.txt").write_text(to_kitti_lines(dets))
 
 
 def main():
