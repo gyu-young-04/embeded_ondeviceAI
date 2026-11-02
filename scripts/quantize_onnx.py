@@ -4,6 +4,8 @@
 - --keep-head-fp32: 탐지 헤드의 박스 계산(후처리) 부분은 FP32로 남긴다.
   박스 좌표(0~960)와 점수(0~1)가 한 텐서에 합쳐지는 곳을 INT8 하나로 표현하면
   점수가 뭉개지기 쉬워서, 이 부분만 빼는 혼합 정밀도(mixed precision) 실험용이다.
+- --fp32-blocks: 민감도 분석에서 찾은 '양자화에 약한 블록'(/model.N/)을 FP32 로 남긴다.
+- --calib-cache: 잰 눈금을 파일로 저장해 두고 다음에 다시 쓴다 (민감도 분석에서 매번 다시 재지 않으려고).
 
 사용법:
     python scripts/quantize_onnx.py --model fp32.onnx --out int8.onnx --calib-list /content/kitti_yolo/train.txt
@@ -20,6 +22,8 @@ from onnxruntime.quantization.calibrate import HistogramCalibrater
 from onnxruntime.quantization.shape_inference import quant_pre_process
 
 from onnx_infer import preprocess
+
+_ORIGINAL_COLLECT = HistogramCalibrater.collect_data  # 여러 번 패치해도 원본을 한 번만 감싸도록
 
 
 class ImageReader(CalibrationDataReader):
@@ -46,7 +50,7 @@ class ListReader(CalibrationDataReader):
 def chunk_histogram_calibration(chunk):
     """Percentile / Entropy 는 사진 전체의 중간 계산값을 한꺼번에 메모리에 쌓아서 Colab RAM 이 터진다.
     사진을 chunk 장씩 나눠 넘기면 히스토그램이 누적되므로 결과는 같고 메모리만 줄어든다."""
-    original = HistogramCalibrater.collect_data
+    original = _ORIGINAL_COLLECT
 
     def collect_data(self, data_reader):
         nxt = data_reader.get_next()
@@ -69,6 +73,53 @@ def head_nodes_to_exclude(model):
     return [n for n in names if n.startswith(head) and not n[len(head):].startswith("cv")]
 
 
+def block_nodes(model, blocks):
+    """/model.N/ 블록 안의 노드 이름들"""
+    prefixes = tuple(f"/model.{b}/" for b in blocks)
+    return [n.name for n in model.graph.node if n.name.startswith(prefixes)] if prefixes else []
+
+
+def layer_ids(model):
+    return sorted({int(n.name.split("/")[1].split(".")[1]) for n in model.graph.node if n.name.startswith("/model.")})
+
+
+def prepare(model_path, out_path):
+    prep = Path(out_path).with_suffix(".prep.onnx")
+    quant_pre_process(str(model_path), str(prep))
+    return prep
+
+
+def quantize(prep, out, calib_list, calib_count=300, method="MinMax", keep_head_fp32=False, fp32_blocks=(),
+             seed=0, calib_chunk=10, calib_cache=None):
+    """prep: quant_pre_process 를 거친 모델 경로. FP32 로 남긴 노드 수를 돌려준다."""
+    model = onnx.load(str(prep))
+    inp = model.graph.input[0]
+    dims = [d.dim_value for d in inp.type.tensor_type.shape.dim]
+    height, width = dims[2], dims[3]
+
+    reader = None
+    if not (calib_cache and Path(calib_cache).is_file()):
+        paths = [l.strip() for l in Path(calib_list).read_text().splitlines() if l.strip()]
+        random.Random(seed).shuffle(paths)
+        reader = ImageReader(paths[:calib_count], inp.name, height, width)
+
+    chunk_histogram_calibration(calib_chunk)
+    exclude = head_nodes_to_exclude(model) if keep_head_fp32 else []
+    exclude = sorted(set(exclude) | set(block_nodes(model, fp32_blocks)))
+    quantize_static(
+        str(prep), str(out), reader,
+        quant_format=QuantFormat.QDQ,
+        activation_type=QuantType.QUInt8,
+        weight_type=QuantType.QInt8,
+        per_channel=True,
+        calibrate_method=getattr(CalibrationMethod, method),
+        nodes_to_exclude=exclude,
+        calibration_cache_path=calib_cache,
+    )
+    return len(exclude)
+
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
@@ -80,34 +131,16 @@ def main():
     parser.add_argument("--calib-chunk", type=int, default=10,
                         help="Percentile / Entropy 에서 몇 장씩 나눠 계산할지 (메모리 절약)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--fp32-blocks", type=int, nargs="*", default=[], help="FP32 로 남길 블록 번호 (예: 10 22)")
+    parser.add_argument("--calib-cache", default=None, help="눈금 저장 파일 (.json). 있으면 다시 재지 않음")
     args = parser.parse_args()
 
-    prep = Path(args.out).with_suffix(".prep.onnx")
-    quant_pre_process(args.model, str(prep))
-
-    model = onnx.load(str(prep))
-    inp = model.graph.input[0]
-    dims = [d.dim_value for d in inp.type.tensor_type.shape.dim]
-    height, width = dims[2], dims[3]
-
-    paths = [l.strip() for l in Path(args.calib_list).read_text().splitlines() if l.strip()]
-    random.Random(args.seed).shuffle(paths)
-    reader = ImageReader(paths[:args.calib_count], inp.name, height, width)
-
-    chunk_histogram_calibration(args.calib_chunk)
-    exclude = head_nodes_to_exclude(model) if args.keep_head_fp32 else []
-    quantize_static(
-        str(prep), args.out, reader,
-        quant_format=QuantFormat.QDQ,
-        activation_type=QuantType.QUInt8,
-        weight_type=QuantType.QInt8,
-        per_channel=True,
-        calibrate_method=getattr(CalibrationMethod, args.method),
-        nodes_to_exclude=exclude,
-    )
+    prep = prepare(args.model, args.out)
+    n = quantize(prep, args.out, args.calib_list, args.calib_count, args.method, args.keep_head_fp32,
+                 args.fp32_blocks, args.seed, args.calib_chunk, args.calib_cache)
     prep.unlink(missing_ok=True)
-    print(f"INT8 저장: {args.out} (calibration {min(args.calib_count, len(paths))}장, {args.method}, "
-          f"FP32로 남긴 노드 {len(exclude)}개)")
+    print(f"INT8 저장: {args.out} (calibration {args.calib_count}장, {args.method}, "
+          f"FP32 블록 {args.fp32_blocks or '없음'}, FP32로 남긴 노드 {n}개)")
 
 
 if __name__ == "__main__":
