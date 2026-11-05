@@ -1,7 +1,7 @@
 # 실험에 쓴 정확한 버전은 각 노트북의 설치 칸 출력에 기록됨
 # 본선용 실험(증류·QAT·민감도 분석)은 아래 버전으로 고정
 ultralytics==8.4.189
-nvidia-modelopt==0.47.0
+nvidia-modelopt==0.48.0
 torch
 onnx
 onnxruntime==1.31.0
