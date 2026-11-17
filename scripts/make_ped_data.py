@@ -6,7 +6,8 @@
    세지 않으므로, 학습 사진에서 이 영역을 회색(114, YOLO 여백색)으로 칠한다.
    단, 라벨이 있는 물체 박스와 겹치는 부분은 원래 픽셀로 되돌려서 물체를 지우지 않는다.
 2. 사람 사진 오버샘플링
-   사람이 한 명이라도 있는 학습 사진은 '<id>_dup' 이름으로 한 번 더 넣어서 한 바퀴에 두 번 보게 한다.
+   사람이 한 명이라도 있는 학습 사진은 '<id>_dup1', '<id>_dup2' ... 이름으로 더 넣어서
+   한 바퀴에 --dup 번(기본 2번) 보게 한다.
 
 - train 사진만 바꾼다. dev(학습 중 검증)·eval(채점)은 원본 그대로 쓴다.
 - 결과: <out>/images, <out>/labels, <out>/train.txt, <out>/kitti_dc.yaml
@@ -78,8 +79,12 @@ def main():
     parser.add_argument("--src", required=True, help="prepare_kitti.py 로 만든 폴더 (train.txt, dev.txt, labels/)")
     parser.add_argument("--out", required=True, help="변형 데이터를 만들 폴더")
     parser.add_argument("--no-mask", action="store_true", help="DontCare 가리기 끄기")
-    parser.add_argument("--no-dup", action="store_true", help="사람 사진 오버샘플링 끄기")
+    parser.add_argument("--dup", type=int, default=2, help="사람 사진을 한 바퀴에 몇 번 볼지 (1 = 오버샘플링 끄기)")
+    parser.add_argument("--no-dup", action="store_true", help="--dup 1 과 같음")
     args = parser.parse_args()
+    if args.no_dup:
+        args.dup = 1
+    assert args.dup >= 1
 
     kitti_label = Path(args.kitti) / "training" / "label_2"
     src = Path(args.src)
@@ -109,12 +114,13 @@ def main():
         lines.append(dst_img)
 
         classes = {int(r.split()[0]) for r in yolo_label.read_text().splitlines() if r.strip()}
-        if PED in classes and not args.no_dup:
-            dup_img = out / "images" / f"{image_id}_dup.png"
-            link(dst_img, dup_img)
-            shutil.copy(yolo_label, out / "labels" / f"{image_id}_dup.txt")
-            lines.append(dup_img)
-            n_dup += 1
+        if PED in classes:
+            for k in range(1, args.dup):
+                dup_img = out / "images" / f"{image_id}_dup{k}.png"
+                link(dst_img, dup_img)
+                shutil.copy(yolo_label, out / "labels" / f"{image_id}_dup{k}.txt")
+                lines.append(dup_img)
+                n_dup += 1
 
     (out / "train.txt").write_text("".join(f"{p}\n" for p in lines))
     # dev(검증)는 원본 그대로: 채점 조건과 같게
@@ -124,7 +130,7 @@ def main():
         f"val: {(src / 'dev.txt').resolve()}\n"
         "names:\n" + "".join(f"  {i}: {n}\n" for i, n in enumerate(CLASS_NAMES))
     )
-    print(f"train 원본 {len(train_imgs)}장 → {len(lines)}장 (사람 사진 {n_dup}장 추가), DontCare 가린 사진 {n_masked}장")
+    print(f"train 원본 {len(train_imgs)}장 → {len(lines)}장 (사람 사진 {n_dup}장 추가, 사람 사진은 한 바퀴에 {args.dup}번), DontCare 가린 사진 {n_masked}장")
     print(f"데이터셋 설정 파일: {out / 'kitti_dc.yaml'}")
 
 
