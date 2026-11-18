@@ -61,7 +61,10 @@ NMS_IOU = 0.5  # dev 로 0.3~0.8 을 비교해 고른 값 (03 노트북 12번 �
 
 
 def postprocess(output, orig_shape, letterbox_info, conf_thr=0.001, iou_thr=NMS_IOU, max_det=100):
-    """output: (1, 4 + 클래스 수, N), 박스는 입력 이미지 기준 (cx, cy, w, h)"""
+    """output: (1, 4 + 클래스 수, N), 박스는 입력 이미지 기준 (cx, cy, w, h)
+
+    iou_thr: 숫자 하나 또는 클래스별 값 (Car, Pedestrian, Cyclist) 튜플
+    """
     pred = output[0].T
     boxes_cxcywh, cls_scores = pred[:, :4], pred[:, 4:]
     cls_ids = cls_scores.argmax(1)
@@ -78,7 +81,8 @@ def postprocess(output, orig_shape, letterbox_info, conf_thr=0.001, iou_thr=NMS_
     keep_all = []
     for c in np.unique(cls_ids):
         idx = np.where(cls_ids == c)[0]
-        keep_all.append(idx[nms(boxes[idx], scores[idx], iou_thr)])
+        thr = iou_thr[c] if isinstance(iou_thr, tuple) else iou_thr
+        keep_all.append(idx[nms(boxes[idx], scores[idx], thr)])
     if not keep_all:
         return []
     keep = np.concatenate(keep_all)
