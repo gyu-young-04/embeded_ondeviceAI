@@ -8,6 +8,8 @@
 2. 사람 사진 오버샘플링
    사람이 한 명이라도 있는 학습 사진은 '<id>_dup1', '<id>_dup2' ... 이름으로 더 넣어서
    한 바퀴에 --dup 번(기본 2번) 보게 한다.
+   --hard-dup N 을 주면 '어려운 사람'이 있는 사진은 N번 본다.
+   어려운 사람 = 대회 채점(Moderate)에는 들어가지만 Easy 에는 못 들어가는 사람 (작거나, 가려졌거나, 잘린 사람).
 
 - train 사진만 바꾼다. dev(학습 중 검증)·eval(채점)은 원본 그대로 쓴다.
 - 결과: <out>/images, <out>/labels, <out>/train.txt, <out>/kitti_dc.yaml
@@ -24,15 +26,24 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from kitti_eval import MAX_OCCLUSION, MAX_TRUNCATION, MIN_HEIGHT
 from prepare_kitti import CLASS_MAP, CLASS_NAMES
 
 GRAY = 114
 PED = CLASS_NAMES.index("Pedestrian")
+EASY, MODERATE = 0, 1
+
+
+def in_difficulty(parts, diff):
+    """KITTI 라벨 한 줄이 해당 난이도의 채점 대상인지 (kitti_eval.py 와 같은 기준)."""
+    height = float(parts[7]) - float(parts[5])
+    return (int(float(parts[2])) <= MAX_OCCLUSION[diff] and float(parts[1]) <= MAX_TRUNCATION[diff]
+            and height > MIN_HEIGHT[diff])
 
 
 def read_boxes(label_path):
-    """KITTI 라벨에서 (DontCare 박스들, 라벨 있는 물체 박스들)을 픽셀 좌표로 읽는다."""
-    dontcare, objects = [], []
+    """KITTI 라벨에서 (DontCare 박스들, 라벨 있는 물체 박스들, 어려운 사람 유무)를 읽는다."""
+    dontcare, objects, hard = [], [], False
     for row in label_path.read_text().splitlines():
         parts = row.split()
         if not parts:
@@ -42,7 +53,9 @@ def read_boxes(label_path):
             dontcare.append(box)
         elif parts[0] in CLASS_MAP:
             objects.append(box)
-    return dontcare, objects
+            if parts[0] == "Pedestrian" and in_difficulty(parts, MODERATE) and not in_difficulty(parts, EASY):
+                hard = True
+    return dontcare, objects, hard
 
 
 def to_slice(box, w, h):
@@ -80,11 +93,12 @@ def main():
     parser.add_argument("--out", required=True, help="변형 데이터를 만들 폴더")
     parser.add_argument("--no-mask", action="store_true", help="DontCare 가리기 끄기")
     parser.add_argument("--dup", type=int, default=2, help="사람 사진을 한 바퀴에 몇 번 볼지 (1 = 오버샘플링 끄기)")
+    parser.add_argument("--hard-dup", type=int, default=0, help="어려운 사람이 있는 사진을 몇 번 볼지 (0 = 구분 안 함)")
     parser.add_argument("--no-dup", action="store_true", help="--dup 1 과 같음")
     args = parser.parse_args()
     if args.no_dup:
         args.dup = 1
-    assert args.dup >= 1
+    assert args.dup >= 1 and args.hard_dup >= 0
 
     kitti_label = Path(args.kitti) / "training" / "label_2"
     src = Path(args.src)
@@ -96,14 +110,14 @@ def main():
     eval_ids = {Path(l.strip()).stem for l in (src / "eval.txt").read_text().splitlines() if l.strip()}
     assert not {p.stem for p in train_imgs} & eval_ids, "train 에 eval 사진이 섞여 있어요"
 
-    lines, n_masked, n_dup = [], 0, 0
+    lines, n_masked, n_dup, n_hard = [], 0, 0, 0
     for img_path in train_imgs:
         image_id = img_path.stem
         yolo_label = src / "labels" / f"{image_id}.txt"
         dst_img = out / "images" / f"{image_id}.png"
         dst_label = out / "labels" / f"{image_id}.txt"
 
-        dontcare, objects = read_boxes(kitti_label / f"{image_id}.txt")
+        dontcare, objects, hard = read_boxes(kitti_label / f"{image_id}.txt")
         if dontcare and not args.no_mask:
             img = np.array(Image.open(img_path).convert("RGB"))
             Image.fromarray(mask_dontcare(img, dontcare, objects)).save(dst_img)
@@ -115,7 +129,9 @@ def main():
 
         classes = {int(r.split()[0]) for r in yolo_label.read_text().splitlines() if r.strip()}
         if PED in classes:
-            for k in range(1, args.dup):
+            n_hard += hard
+            times = args.hard_dup if hard and args.hard_dup else args.dup
+            for k in range(1, times):
                 dup_img = out / "images" / f"{image_id}_dup{k}.png"
                 link(dst_img, dup_img)
                 shutil.copy(yolo_label, out / "labels" / f"{image_id}_dup{k}.txt")
@@ -130,7 +146,7 @@ def main():
         f"val: {(src / 'dev.txt').resolve()}\n"
         "names:\n" + "".join(f"  {i}: {n}\n" for i, n in enumerate(CLASS_NAMES))
     )
-    print(f"train 원본 {len(train_imgs)}장 → {len(lines)}장 (사람 사진 {n_dup}장 추가, 사람 사진은 한 바퀴에 {args.dup}번), DontCare 가린 사진 {n_masked}장")
+    print(f"train 원본 {len(train_imgs)}장 → {len(lines)}장 (복사본 {n_dup}장 추가, 사람 사진 {args.dup}번, 어려운 사람 사진 {n_hard}장은 {args.hard_dup or args.dup}번), DontCare 가린 사진 {n_masked}장")
     print(f"데이터셋 설정 파일: {out / 'kitti_dc.yaml'}")
 
 
