@@ -13,6 +13,8 @@
 3. 사람 주변 확대 사진 (--crop N)
    어려운 사람이 있는 사진마다 그 사람 주변을 잘라낸 사진을 N장 더 넣는다. 학습 때 입력 크기로 커지므로
    작은 사람이 --crop-zoom 배(기본 2배) 크게 보인다. 잘려서 절반도 안 남은 물체는 회색으로 칠한다.
+   --mined 를 주면 mine_hard.py 가 찾은 '모델이 실제로 놓친 사람'의 사진을 --mined-extra 번 더 넣고,
+   그 사람 주변 확대 사진을 --mined-crop 장 넣는다.
 4. --full 을 주면 dev 사진도 학습에 넣는다 (설정을 다 정한 뒤 마지막 재학습용). 이때 dev 점수는 믿을 수 없다.
 
 - train 사진만 바꾼다. dev(학습 중 검증)·eval(채점)은 원본 그대로 쓴다.
@@ -23,6 +25,7 @@
 """
 
 import argparse
+import json
 import os
 import shutil
 from pathlib import Path
@@ -130,6 +133,9 @@ def main():
     parser.add_argument("--hard-dup", type=int, default=0, help="어려운 사람이 있는 사진을 몇 번 볼지 (0 = 구분 안 함)")
     parser.add_argument("--crop", type=int, default=0, help="어려운 사람이 있는 사진마다 확대 사진 몇 장 (0 = 안 함)")
     parser.add_argument("--crop-zoom", type=float, default=2.0, help="확대 배율")
+    parser.add_argument("--mined", help="mine_hard.py 결과 json")
+    parser.add_argument("--mined-extra", type=int, default=1, help="놓친 사람이 있는 사진을 몇 번 더 볼지")
+    parser.add_argument("--mined-crop", type=int, default=2, help="놓친 사람 주변 확대 사진 몇 장")
     parser.add_argument("--full", action="store_true", help="dev 사진도 학습에 넣기 (마지막 재학습용)")
     parser.add_argument("--no-dup", action="store_true", help="--dup 1 과 같음")
     args = parser.parse_args()
@@ -148,7 +154,8 @@ def main():
     eval_ids = {Path(l.strip()).stem for l in (src / "eval.txt").read_text().splitlines() if l.strip()}
     assert not {p.stem for p in train_imgs} & eval_ids, "train 에 eval 사진이 섞여 있어요"
 
-    lines, n_masked, n_dup, n_hard, n_crop = [], 0, 0, 0, 0
+    mined = json.loads(Path(args.mined).read_text(encoding="utf-8"))["images"] if args.mined else {}
+    lines, n_masked, n_dup, n_hard, n_crop, n_mined = [], 0, 0, 0, 0, 0
     rng = np.random.default_rng(0)
     for img_path in train_imgs:
         image_id = img_path.stem
@@ -170,6 +177,9 @@ def main():
         if PED in classes:
             n_hard += bool(hard)
             times = args.hard_dup if hard and args.hard_dup else args.dup
+            if image_id in mined:
+                times += args.mined_extra
+                n_mined += 1
             for k in range(1, times):
                 dup_img = out / "images" / f"{image_id}_dup{k}.png"
                 link(dst_img, dup_img)
@@ -177,18 +187,20 @@ def main():
                 lines.append(dup_img)
                 n_dup += 1
 
-        if hard and args.crop:
+        jobs = [("crop", hard, args.crop if hard else 0), ("mcrop", mined.get(image_id, []), args.mined_crop)]
+        if any(boxes and count for _, boxes, count in jobs):
             img = np.array(Image.open(dst_img).convert("RGB"))
-            for k in range(args.crop):
-                target = hard[int(rng.integers(len(hard)))]
-                made = make_crop(img, objects, box_classes, target, args.crop_zoom, rng)
-                if made is None:
-                    continue
-                crop_img = out / "images" / f"{image_id}_crop{k}.png"
-                Image.fromarray(made[0]).save(crop_img)
-                (out / "labels" / f"{image_id}_crop{k}.txt").write_text("".join(made[1]))
-                lines.append(crop_img)
-                n_crop += 1
+            for tag, boxes, count in jobs:
+                for k in range(count if boxes else 0):
+                    target = boxes[int(rng.integers(len(boxes)))]
+                    made = make_crop(img, objects, box_classes, target, args.crop_zoom, rng)
+                    if made is None:
+                        continue
+                    crop_img = out / "images" / f"{image_id}_{tag}{k}.png"
+                    Image.fromarray(made[0]).save(crop_img)
+                    (out / "labels" / f"{image_id}_{tag}{k}.txt").write_text("".join(made[1]))
+                    lines.append(crop_img)
+                    n_crop += 1
 
     (out / "train.txt").write_text("".join(f"{p}\n" for p in lines))
     # dev(검증)는 원본 그대로: 채점 조건과 같게
@@ -198,7 +210,7 @@ def main():
         f"val: {(src / 'dev.txt').resolve()}\n"
         "names:\n" + "".join(f"  {i}: {n}\n" for i, n in enumerate(CLASS_NAMES))
     )
-    print(f"train 원본 {len(train_imgs)}장 → {len(lines)}장 (복사본 {n_dup}장 추가, 사람 사진 {args.dup}번, 어려운 사람 사진 {n_hard}장은 {args.hard_dup or args.dup}번, 확대 사진 {n_crop}장), DontCare 가린 사진 {n_masked}장")
+    print(f"train 원본 {len(train_imgs)}장 → {len(lines)}장 (복사본 {n_dup}장 추가, 사람 사진 {args.dup}번, 어려운 사람 사진 {n_hard}장은 {args.hard_dup or args.dup}번, 놓친 사람 사진 {n_mined}장, 확대 사진 {n_crop}장), DontCare 가린 사진 {n_masked}장")
     print(f"데이터셋 설정 파일: {out / 'kitti_dc.yaml'}")
 
 

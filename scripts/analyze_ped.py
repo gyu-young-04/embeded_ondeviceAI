@@ -19,7 +19,6 @@ import numpy as np
 import pandas as pd
 
 import kitti_eval
-import onnx_infer
 from kitti_eval import MAX_OCCLUSION, MAX_TRUNCATION, MIN_HEIGHT, box_overlap, read_kitti_file
 
 MODERATE = 1
@@ -157,6 +156,8 @@ def main():
     parser.add_argument("--work", required=True, help="예측 파일을 둘 폴더")
     parser.add_argument("--out", required=True, help="결과 json")
     args = parser.parse_args()
+
+    import onnx_infer   # 추론할 때만 필요 (mine_hard.py 는 안 씀)
 
     ids = [Path(l.strip()).stem for l in Path(args.dev_list).read_text().splitlines() if l.strip()]
     work, labels = Path(args.work), Path(args.labels)
