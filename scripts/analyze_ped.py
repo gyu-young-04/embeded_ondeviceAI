@@ -27,7 +27,8 @@ NEAR_IOU = 0.2
 TOUCH_IOU = 0.3
 HEIGHT_BINS = [(25, 40), (40, 60), (60, 100), (100, 10000)]
 MISS_CAUSES = ["점수가 낮음", "겹친 사람에게 뺏김", "박스 어긋남", "자전거로 착각", "차로 착각", "후보 없음"]
-FP_CAUSES = ["같은 사람 중복", "자전거를 사람으로", "차를 사람으로", "다른 물체", "박스 어긋남", "배경"]
+FP_CAUSES = ["같은 사람 중복", "자전거를 사람으로", "차를 사람으로", "다른 물체",
+             "찾은 사람 옆 박스", "놓친 사람 옆 박스", "채점 제외 사람 옆 박스", "배경"]
 
 
 def height(box):
@@ -59,7 +60,7 @@ def match_image(gts, dets, thr):
     peds = sorted((d for d in dets if d["name"] == "Pedestrian" and height(d["bbox"]) >= MIN_HEIGHT[MODERATE]),
                   key=lambda d: -d["score"])
     kept = [d for d in peds if d["score"] >= thr]
-    owner, used_ignored, fps = {}, set(), []
+    owner, used_ignored, fps, near = {}, set(), [], []
     for k, d in enumerate(kept):
         box = d["bbox"]
         free = [(iou(box, g["bbox"]), i) for i, g in enumerate(targets) if i not in owner]
@@ -84,9 +85,16 @@ def match_image(gts, dets, thr):
         elif best_iou(box, misc) > TOUCH_IOU:
             fps.append("다른 물체")
         elif best_iou(box, all_people) > NEAR_IOU:
-            fps.append("박스 어긋남")
+            near.append(box)
         else:
             fps.append("배경")
+
+    for box in near:   # 사람 근처의 어긋난 박스: 가장 많이 겹치는 사람이 누구인지로 나눈다
+        ov, is_found = max(((iou(box, g["bbox"]), i in owner) for i, g in enumerate(targets)), default=(0.0, False))
+        if best_iou(box, ignored) >= ov:
+            fps.append("채점 제외 사람 옆 박스")
+        else:
+            fps.append("찾은 사람 옆 박스" if is_found else "놓친 사람 옆 박스")
 
     missed, found = [], [targets[i] for i in owner]
     used = [kept[k]["bbox"] for k in owner.values()]
