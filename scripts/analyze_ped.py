@@ -155,6 +155,7 @@ def main():
     parser.add_argument("--dev-list", required=True)
     parser.add_argument("--work", required=True, help="예측 파일을 둘 폴더")
     parser.add_argument("--out", required=True, help="결과 json")
+    parser.add_argument("--ped-iou", type=float, default=0.5, help="사람 클래스 NMS IoU")
     args = parser.parse_args()
 
     import onnx_infer   # 추론할 때만 필요 (mine_hard.py 는 안 씀)
@@ -162,7 +163,7 @@ def main():
     ids = [Path(l.strip()).stem for l in Path(args.dev_list).read_text().splitlines() if l.strip()]
     work, labels = Path(args.work), Path(args.labels)
     print(f"dev {len(ids)}장 추론")
-    onnx_infer.predict_folder(args.model, args.images, ids, work)
+    onnx_infer.predict_folder(args.model, args.images, ids, work, iou_thr=(0.5, args.ped_iou, 0.5))
     result, _ = kitti_eval.evaluate(work, labels, ids)
     print(f"dev 사람 Moderate AP: {result['Pedestrian'][1]:.2f}")
 
