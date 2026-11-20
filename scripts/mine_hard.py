@@ -34,7 +34,8 @@ def main():
     labels = Path(args.labels)
     model = YOLO(args.weights)
     mined, causes, n_people = {}, Counter(), 0
-    for r in model.predict(source=paths, stream=True, imgsz=args.imgsz, conf=0.001, iou=0.7, max_det=100,
+    # 목록(list)을 넘기면 Ultralytics 가 사진을 전부 메모리에 올려서 터져요. 목록 파일을 넘겨 한 장씩 읽게 해요
+    for r in model.predict(source=args.list, stream=True, imgsz=args.imgsz, conf=0.001, iou=0.7, max_det=100,
                            device=args.device, verbose=False):
         image_id = Path(r.path).stem
         dets = [{"name": r.names[int(c)], "bbox": [float(v) for v in box], "score": float(s)}
