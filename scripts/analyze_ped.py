@@ -48,7 +48,7 @@ def best_iou(box, others):
     return max((iou(box, o) for o in others), default=0.0)
 
 
-def match_image(gts, dets, thr):
+def match_image(gts, dets, thr, with_fp=False):
     """한 사진에서 thr 이상인 사람 탐지를 정답에 짝지어 (놓친 사람 목록, 오탐 원인 목록, 찾은 사람 목록)을 돌려준다."""
     targets = [g for g in gts if is_target(g)]
     ignored = [g["bbox"] for g in gts if g["name"] in ("Pedestrian", "Person_sitting") and not is_target(g)]
@@ -77,24 +77,25 @@ def match_image(gts, dets, thr):
             continue
         all_people = [g["bbox"] for g in targets] + ignored
         if best_iou(box, [targets[i]["bbox"] for i in owner]) > MATCH_IOU:
-            fps.append("같은 사람 중복")
+            fps.append(("같은 사람 중복", d))
         elif best_iou(box, cyclists) > TOUCH_IOU:
-            fps.append("자전거를 사람으로")
+            fps.append(("자전거를 사람으로", d))
         elif best_iou(box, cars) > TOUCH_IOU:
-            fps.append("차를 사람으로")
+            fps.append(("차를 사람으로", d))
         elif best_iou(box, misc) > TOUCH_IOU:
-            fps.append("다른 물체")
+            fps.append(("다른 물체", d))
         elif best_iou(box, all_people) > NEAR_IOU:
-            near.append(box)
+            near.append(d)
         else:
-            fps.append("배경")
+            fps.append(("배경", d))
 
-    for box in near:   # 사람 근처의 어긋난 박스: 가장 많이 겹치는 사람이 누구인지로 나눈다
+    for d in near:   # 사람 근처의 어긋난 박스: 가장 많이 겹치는 사람이 누구인지로 나눈다
+        box = d["bbox"]
         ov, is_found = max(((iou(box, g["bbox"]), i in owner) for i, g in enumerate(targets)), default=(0.0, False))
         if best_iou(box, ignored) >= ov:
-            fps.append("채점 제외 사람 옆 박스")
+            fps.append(("채점 제외 사람 옆 박스", d))
         else:
-            fps.append("찾은 사람 옆 박스" if is_found else "놓친 사람 옆 박스")
+            fps.append(("찾은 사람 옆 박스" if is_found else "놓친 사람 옆 박스", d))
 
     missed, found = [], [targets[i] for i in owner]
     used = [kept[k]["bbox"] for k in owner.values()]
@@ -117,6 +118,8 @@ def match_image(gts, dets, thr):
         else:
             cause = "후보 없음"
         missed.append((g, cause))
+    if not with_fp:   # with_fp=True 면 (원인, 탐지) 를 돌려준다
+        fps = [c for c, _ in fps]
     return missed, fps, found
 
 
